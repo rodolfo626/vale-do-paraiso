@@ -453,7 +453,7 @@
         
         const lastKM = db.oilChanges[plate];
         const currentKM = db.history[plate] || 0;
-        const nextChange = lastKM + 30000;
+        const nextChange = lastKM + 20000;
         const remaining = nextChange - currentKM;
         
         if (remaining <= 0) {
@@ -488,8 +488,8 @@
         db.plates.sort().forEach(p => {
             const lastKM = db.oilChanges[p] || 0;
             const currentKM = db.history[p] || 0;
-            const nextChange = lastKM > 0 ? lastKM + 30000 : "---";
-            const remaining = lastKM > 0 ? (lastKM + 30000) - currentKM : "---";
+            const nextChange = lastKM > 0 ? lastKM + 20000 : "---";
+            const remaining = lastKM > 0 ? (lastKM + 20000) - currentKM : "---";
             
             let status = '<span class="badge bg-secondary">Não registrado</span>';
             let rowClass = "";
