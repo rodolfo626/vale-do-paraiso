@@ -176,8 +176,11 @@
                                 <label class="form-label fw-bold">KM da Troca</label>
                                 <input type="number" class="form-control" id="oil_km" required>
                             </div>
-                            <div class="col-md-4 d-flex align-items-end">
-                                <button type="submit" class="btn btn-oil w-100" id="btn_register_oil">REGISTRAR NOVA TROCA (20.000 KM)</button>
+                            <div class="col-md-3">
+                                <button type="button" class="btn btn-oil w-100" onclick="registerOil(20000)">TROCA (20.000 KM)</button>
+                            </div>
+                            <div class="col-md-3">
+                                <button type="button" class="btn btn-oil w-100" onclick="registerOil(30000)" style="background-color: #d35400;">TROCA (30.000 KM)</button>
                             </div>
                         </div>
                     </form>
@@ -453,7 +456,8 @@
         
         const lastKM = db.oilChanges[plate];
         const currentKM = db.history[plate] || 0;
-        const nextChange = lastKM + 20000;
+        const interval = (db.oilIntervals && db.oilIntervals[plate]) ? db.oilIntervals[plate] : 20000;
+        const nextChange = lastKM + interval;
         const remaining = nextChange - currentKM;
         
         if (remaining <= 0) {
@@ -465,21 +469,24 @@
         }
     }
 
-    document.getElementById('oilChangeForm').addEventListener('submit', function(e) {
-        e.preventDefault();
+    function registerOil(interval) {
         const plate = document.getElementById('oil_plate').value.trim().toUpperCase();
         const km = parseFloat(document.getElementById('oil_km').value);
         
         if (!plate || isNaN(km)) return alert("Preencha placa e KM corretamente.");
         
+        // Salva o intervalo escolhido para esta placa
+        if (!db.oilIntervals) db.oilIntervals = {};
+        db.oilIntervals[plate] = interval;
+        
         db.oilChanges[plate] = km;
         if (!db.history[plate] || km > db.history[plate]) db.history[plate] = km;
         
         save();
-        this.reset();
+        document.getElementById('oilChangeForm').reset();
         renderOilTable();
-        alert("Troca de óleo registrada com sucesso!");
-    });
+        alert(`Troca de óleo (${interval.toLocaleString()} km) registrada com sucesso!`);
+    }
 
     function renderOilTable() {
         const body = document.getElementById('oilTableBody');
@@ -488,8 +495,10 @@
         db.plates.sort().forEach(p => {
             const lastKM = db.oilChanges[p] || 0;
             const currentKM = db.history[p] || 0;
-            const nextChange = lastKM > 0 ? lastKM + 20000 : "---";
-            const remaining = lastKM > 0 ? (lastKM + 20000) - currentKM : "---";
+            const interval = (db.oilIntervals && db.oilIntervals[p]) ? db.oilIntervals[p] : 20000;
+            
+            const nextChange = lastKM > 0 ? lastKM + interval : "---";
+            const remaining = lastKM > 0 ? (lastKM + interval) - currentKM : "---";
             
             let status = '<span class="badge bg-secondary">Não registrado</span>';
             let rowClass = "";
