@@ -328,6 +328,11 @@
             Diferença Bomba vs Veículos: <span id="r_diff_diesel"></span> L<br>
             Média Geral da Frota: <span id="r_avg_fleet"></span> KM/L
         </div>
+
+        <div id="oilWarningFooter" class="mt-3 p-3 border border-danger bg-white text-danger" style="display:none;">
+            <h6 class="fw-bold mb-1">⚠️ AVISO DE MANUTENÇÃO (ÓLEO):</h6>
+            <div id="oilWarningList" class="small"></div>
+        </div>
     </div>
 </div>
 
@@ -664,6 +669,33 @@
         document.getElementById('r_total_v_diesel').innerText = sumDiesel.toFixed(2);
         document.getElementById('r_diff_diesel').innerText = (d_total - sumDiesel).toFixed(2);
         document.getElementById('r_avg_fleet').innerText = sumDiesel > 0 ? (sumKM / sumDiesel).toFixed(2) : "0.00";
+
+        // Alerta de Óleo no Relatório
+        const warnFooter = document.getElementById('oilWarningFooter');
+        const warnList = document.getElementById('oilWarningList');
+        warnList.innerHTML = '';
+        let warnings = [];
+
+        db.plates.sort().forEach(p => {
+            const lastKM = db.oilChanges[p] || 0;
+            const currentKM = db.history[p] || 0;
+            const interval = (db.oilIntervals && db.oilIntervals[p]) ? db.oilIntervals[p] : 20000;
+            if (lastKM > 0) {
+                const remaining = (lastKM + interval) - currentKM;
+                if (remaining <= 0) {
+                    warnings.push(`<strong>${p}:</strong> VENCIDA há ${Math.abs(remaining).toLocaleString()} KM`);
+                } else if (remaining < 3000) {
+                    warnings.push(`<strong>${p}:</strong> Próxima de vencer em ${remaining.toLocaleString()} KM`);
+                }
+            }
+        });
+
+        if (warnings.length > 0) {
+            warnFooter.style.display = 'block';
+            warnList.innerHTML = warnings.join('<br>');
+        } else {
+            warnFooter.style.display = 'none';
+        }
     }
 
     function shareExcel() {
