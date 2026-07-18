@@ -252,6 +252,10 @@
                     <label class="form-label fw-bold">Placa</label>
                     <input type="text" class="form-control" id="edit_plate">
                 </div>
+                <div class="mb-3 p-2 bg-light border rounded">
+                    <small class="text-muted d-block">Último KM Válido:</small>
+                    <span id="edit_last_km_label" class="fw-bold text-primary" data-value="0">0</span>
+                </div>
                 <div class="mb-3">
                     <label class="form-label fw-bold">KM Atual</label>
                     <input type="number" class="form-control" id="edit_km">
@@ -597,10 +601,44 @@
     function showEditMenu(index) {
         editingIndex = index;
         const entry = db.days[today].entries[index];
-        document.getElementById('edit_plate').value = entry.plate;
+        const plate = entry.plate;
+
+        // Buscar o último KM válido ANTES deste lançamento específico
+        let lastValidKM = 0;
+        const todayEntries = db.days[today].entries;
+        for (let i = index - 1; i >= 0; i--) {
+            if (todayEntries[i].plate === plate) {
+                lastValidKM = todayEntries[i].km;
+                break;
+            }
+        }
+        
+        if (lastValidKM === 0) {
+            const dates = Object.keys(db.days).sort().reverse();
+            for (const d of dates) {
+                if (d >= today) continue;
+                const dayEntries = db.days[d].entries;
+                for (let i = dayEntries.length - 1; i >= 0; i--) {
+                    if (dayEntries[i].plate === plate) {
+                        lastValidKM = dayEntries[i].km;
+                        break;
+                    }
+                }
+                if (lastValidKM !== 0) break;
+            }
+        }
+
+        document.getElementById('edit_plate').value = plate;
         document.getElementById('edit_km').value = entry.km;
         document.getElementById('edit_liters').value = entry.liters;
         document.getElementById('edit_arla').value = entry.arla;
+        
+        const lastKmLabel = document.getElementById('edit_last_km_label');
+        if (lastKmLabel) {
+            lastKmLabel.innerText = lastValidKM > 0 ? lastValidKM : "Não encontrado";
+            lastKmLabel.dataset.value = lastValidKM;
+        }
+        
         new bootstrap.Modal(document.getElementById('editEntryModal')).show();
     }
 
@@ -610,13 +648,27 @@
         const liters = parseFloat(document.getElementById('edit_liters').value);
         const arla = parseFloat(document.getElementById('edit_arla').value) || 0;
         
-        const dayEntries = db.days[today].entries;
-        let prevKM = km - dayEntries[editingIndex].diffKM; 
-        const diffKM = km - prevKM;
-        const avg = diffKM > 0 ? (diffKM / liters).toFixed(2) : "0.00";
+        const lastValidKM = parseFloat(document.getElementById('edit_last_km_label').dataset.value) || km;
+        const diffKM = km - lastValidKM;
+        const avg = (diffKM > 0 && liters > 0) ? (diffKM / liters).toFixed(2) : "0.00";
 
-        dayEntries[editingIndex] = { ...dayEntries[editingIndex], plate, km, liters, arla, diffKM, avg };
-        db.history[plate] = km;
+        db.days[today].entries[editingIndex] = { ...db.days[today].entries[editingIndex], plate, km, liters, arla, diffKM, avg };
+        
+        // Atualiza o histórico global com o lançamento mais recente da placa
+        const dates = Object.keys(db.days).sort().reverse();
+        let foundLatest = false;
+        for (const d of dates) {
+            const entries = db.days[d].entries;
+            for (let i = entries.length - 1; i >= 0; i--) {
+                if (entries[i].plate === plate) {
+                    db.history[plate] = entries[i].km;
+                    foundLatest = true;
+                    break;
+                }
+            }
+            if (foundLatest) break;
+        }
+
         save();
         renderTable();
         renderOilTable();
@@ -624,18 +676,58 @@
     }
 
     function deleteCurrentEntry() {
-        if (confirm("Excluir lançamento?")) {
+        if (confirm("Tem certeza que deseja EXCLUIR este lançamento?")) {
+            const entry = db.days[today].entries[editingIndex];
+            const plate = entry.plate;
+            
+            // Remove o lançamento
             db.days[today].entries.splice(editingIndex, 1);
-            save(); renderTable();
+            
+            // Recalcula o KM de referência para essa placa no banco (db.history)
+            let foundNewHistory = false;
+            
+            // 1. Procurar em hoje (depois de removido)
+            const todayEntries = db.days[today].entries;
+            for (let i = todayEntries.length - 1; i >= 0; i--) {
+                if (todayEntries[i].plate === plate) {
+                    db.history[plate] = todayEntries[i].km;
+                    foundNewHistory = true;
+                    break;
+                }
+            }
+            
+            // 2. Se não achou hoje, procurar em dias anteriores (ordem decrescente)
+            if (!foundNewHistory) {
+                const dates = Object.keys(db.days).sort().reverse();
+                for (const d of dates) {
+                    if (d >= today) continue; // Pula hoje e datas futuras
+                    const dayEntries = db.days[d].entries;
+                    for (let i = dayEntries.length - 1; i >= 0; i--) {
+                        if (dayEntries[i].plate === plate) {
+                            db.history[plate] = dayEntries[i].km;
+                            foundNewHistory = true;
+                            break;
+                        }
+                    }
+                    if (foundNewHistory) break;
+                }
+            }
+            
+            // 3. Se ainda assim não achou nada, remove a placa do histórico de KMs
+            if (!foundNewHistory) {
+                delete db.history[plate];
+            }
+
+            save();
+            renderTable();
+            renderOilTable();
             bootstrap.Modal.getInstance(document.getElementById('editEntryModal')).hide();
         }
     }
 
     function deleteEntry(index) {
-        if (confirm("Excluir lançamento?")) {
-            db.days[today].entries.splice(index, 1);
-            save(); renderTable();
-        }
+        editingIndex = index;
+        deleteCurrentEntry();
     }
 
     function finalizeDay() {
