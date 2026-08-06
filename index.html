@@ -187,6 +187,12 @@
                 </div>
             </div>
 
+            <div class="d-flex justify-content-end mb-3">
+                <button class="btn btn-dark fw-bold" onclick="generateOilReport()">
+                    <i class="bi bi-file-earmark-text"></i> GERAR RELATÓRIO DE TROCA DE ÓLEO
+                </button>
+            </div>
+
             <div class="table-container">
                 <h5 class="section-title oil">Status de Manutenção da Frota</h5>
                 <table class="table table-hover">
@@ -278,6 +284,35 @@
                     <button type="button" class="btn btn-success" onclick="saveEdit()">SALVAR ALTERAÇÃO</button>
                 </div>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- Relatório de Troca de Óleo -->
+<div id="oilReportArea" style="display:none;">
+    <div class="container py-4 text-center no-print">
+        <button class="btn btn-danger me-2" onclick="generateOilPDF()"><i class="bi bi-file-earmark-pdf"></i> GERAR PDF</button>
+        <button class="btn btn-secondary" onclick="closeOilReport()">Voltar</button>
+    </div>
+    <div class="report-sheet" id="oilPrintableReport">
+        <div class="report-header">
+            <h3>Relatório de Troca de Óleo</h3>
+            <h5>Controle Vale do Paraíso</h5>
+            <p class="mb-0">Data: <span id="oilReportDate"></span></p>
+        </div>
+        <table class="table table-bordered table-sm">
+            <thead>
+                <tr class="table-light">
+                    <th>Placa do veículo</th>
+                    <th>KM / Última troca</th>
+                    <th>KM / Próxima troca</th>
+                </tr>
+            </thead>
+            <tbody id="oilReportTableBody"></tbody>
+        </table>
+        <div id="oilReportWarningFooter" class="mt-4 p-3 border border-danger bg-light text-danger" style="display:none;">
+            <h5 class="fw-bold mb-2">⚠️ AVISO DE MANUTENÇÃO</h5>
+            <div id="oilReportWarningList"></div>
         </div>
     </div>
 </div>
@@ -788,6 +823,66 @@
         } else {
             warnFooter.style.display = 'none';
         }
+    }
+
+    function generateOilReport() {
+        document.querySelector('.container.no-print').style.display = 'none';
+        document.querySelector('.header-panel').style.display = 'none';
+        document.getElementById('reportArea').style.display = 'none';
+        document.getElementById('oilReportArea').style.display = 'block';
+        document.getElementById('oilReportDate').innerText = new Date().toLocaleDateString('pt-BR');
+
+        const body = document.getElementById('oilReportTableBody');
+        const warningFooter = document.getElementById('oilReportWarningFooter');
+        const warningList = document.getElementById('oilReportWarningList');
+        body.innerHTML = '';
+        warningList.innerHTML = '';
+        const warnings = [];
+
+        db.plates.slice().sort().forEach(plate => {
+            const lastKM = db.oilChanges[plate] || 0;
+            const interval = (db.oilIntervals && db.oilIntervals[plate]) ? db.oilIntervals[plate] : 20000;
+            const nextKM = lastKM > 0 ? lastKM + interval : 0;
+            const currentKM = db.history[plate] || 0;
+            const overdue = lastKM > 0 && currentKM >= nextKM;
+            const row = document.createElement('tr');
+            if (overdue) row.className = 'table-danger text-danger fw-bold';
+            row.innerHTML = `
+                <td>${plate}</td>
+                <td>${lastKM > 0 ? lastKM.toLocaleString('pt-BR') : 'Não registrada'}</td>
+                <td>${nextKM > 0 ? nextKM.toLocaleString('pt-BR') : '---'}</td>
+            `;
+            body.appendChild(row);
+
+            if (overdue) {
+                warnings.push(`<strong>${plate}:</strong> troca de óleo vencida há ${(currentKM - nextKM).toLocaleString('pt-BR')} KM.`);
+            }
+        });
+
+        if (warnings.length) {
+            warningFooter.style.display = 'block';
+            warningList.innerHTML = warnings.join('<br>');
+        } else {
+            warningFooter.style.display = 'none';
+        }
+    }
+
+    function generateOilPDF() {
+        const options = {
+            margin: 10,
+            filename: `Relatorio_Troca_Oleo_${today}.pdf`,
+            image: { type: 'jpeg', quality: 0.98 },
+            html2canvas: { scale: 2 },
+            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+        };
+        html2pdf().set(options).from(document.getElementById('oilPrintableReport')).save();
+    }
+
+    function closeOilReport() {
+        document.getElementById('oilReportArea').style.display = 'none';
+        document.querySelector('.header-panel').style.display = '';
+        document.querySelector('.container.no-print').style.display = '';
+        document.getElementById('oil-tab').click();
     }
 
     function shareExcel() {
