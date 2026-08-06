@@ -291,7 +291,7 @@
 <!-- Relatório de Troca de Óleo -->
 <div id="oilReportArea" style="display:none;">
     <div class="container py-4 text-center no-print">
-        <button class="btn btn-danger me-2" onclick="generateOilPDF()"><i class="bi bi-file-earmark-pdf"></i> GERAR PDF</button>
+        <button class="btn btn-danger me-2" onclick="shareOilPDF()"><i class="bi bi-share"></i> COMPARTILHAR PDF</button>
         <button class="btn btn-secondary" onclick="closeOilReport()">Voltar</button>
     </div>
     <div class="report-sheet" id="oilPrintableReport">
@@ -867,15 +867,47 @@
         }
     }
 
-    function generateOilPDF() {
-        const options = {
+    function getOilPDFOptions() {
+        return {
             margin: 10,
             filename: `Relatorio_Troca_Oleo_${today}.pdf`,
             image: { type: 'jpeg', quality: 0.98 },
             html2canvas: { scale: 2 },
             jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
         };
-        html2pdf().set(options).from(document.getElementById('oilPrintableReport')).save();
+    }
+
+    function generateOilPDF() {
+        html2pdf().set(getOilPDFOptions()).from(document.getElementById('oilPrintableReport')).save();
+    }
+
+    async function shareOilPDF() {
+        const options = getOilPDFOptions();
+        const fileName = options.filename;
+        try {
+            const pdfBlob = await html2pdf().set(options).from(document.getElementById('oilPrintableReport')).outputPdf('blob');
+            const file = new File([pdfBlob], fileName, { type: 'application/pdf' });
+
+            if (navigator.share && (!navigator.canShare || navigator.canShare({ files: [file] }))) {
+                await navigator.share({
+                    title: 'Relatório de Troca de Óleo',
+                    text: 'Relatório de Troca de Óleo - Vale do Paraíso',
+                    files: [file]
+                });
+            } else {
+                // Em navegadores sem compartilhamento de arquivos, baixa o PDF.
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(pdfBlob);
+                link.download = fileName;
+                link.click();
+                setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+                alert('O compartilhamento não está disponível neste navegador. O PDF foi baixado; você pode anexá-lo ao WhatsApp.');
+            }
+        } catch (error) {
+            // Cancelar o menu de compartilhamento não é um erro para o usuário.
+            if (error && error.name === 'AbortError') return;
+            generateOilPDF();
+        }
     }
 
     function closeOilReport() {
