@@ -307,6 +307,7 @@
             <thead>
                 <tr class="table-light">
                     <th>Placa do veículo</th>
+                    <th>KM atual</th>
                     <th>KM / Última troca</th>
                     <th>KM / Próxima troca</th>
                 </tr>
@@ -852,6 +853,7 @@
             if (overdue) row.className = 'table-danger text-danger fw-bold';
             row.innerHTML = `
                 <td>${plate}</td>
+                <td>${currentKM > 0 ? currentKM.toLocaleString('pt-BR') : 'Não informado'}</td>
                 <td>${lastKM > 0 ? lastKM.toLocaleString('pt-BR') : 'Não registrada'}</td>
                 <td>${nextKM > 0 ? nextKM.toLocaleString('pt-BR') : '---'}</td>
             `;
