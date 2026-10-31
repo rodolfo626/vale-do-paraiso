@@ -110,7 +110,7 @@
                         <div class="row g-3">
                             <div class="col-md-3">
                                 <label class="form-label fw-bold">Placa do Veículo</label>
-                                <input type="text" class="form-control" id="v_plate" list="platesList" placeholder="Digite e selecione..." oninput="checkOilStatus(this.value)" required>
+                                <input type="text" class="form-control" id="v_plate" list="platesList" placeholder="Digite e selecione..." oninput="checkOilStatus(this.value); updateFuelPrecision()" required>
                                 <datalist id="platesList"></datalist>
                                 <div id="oilStatusDisplay" class="mt-1"></div>
                                 <div class="d-flex gap-2 mt-1">
@@ -120,7 +120,7 @@
                             </div>
                             <div class="col-md-2">
                                 <label class="form-label fw-bold">KM no Painel</label>
-                                <input type="number" class="form-control" id="v_km" required>
+                                <input type="number" class="form-control" id="v_km" oninput="updateFuelPrecision()" required>
                             </div>
                             <div class="col-md-2">
                                 <label class="form-label fw-bold">Diesel (Litros)</label>
@@ -139,16 +139,16 @@
             </div>
 
             <div class="card border-primary mb-4" id="fuelPrecisionCard">
-                <div class="card-body">
-                    <h5 class="section-title">Visor de Precisão de Combustível</h5>
-                    <p class="text-muted small mb-3">Estimativa da frota usando os KM associados aos lançamentos da data selecionada e a média dos 3 dias anteriores.</p>
-                    <div class="row g-3 text-center">
-                        <div class="col-6 col-md-3"><div class="p-2 bg-light rounded"><small class="text-muted d-block">KM dos lançamentos na data</small><strong id="precisionKmToday">0 km</strong></div></div>
-                        <div class="col-6 col-md-3"><div class="p-2 bg-light rounded"><small class="text-muted d-block">Média dos 3 dias anteriores</small><strong id="precisionAverage">Sem dados</strong></div></div>
-                        <div class="col-6 col-md-3"><div class="p-2 bg-primary text-white rounded"><small class="d-block">Diesel estimado</small><strong id="precisionLitersEstimate">Aguardando dados</strong></div></div>
-                        <div class="col-6 col-md-3"><div class="p-2 bg-light rounded"><small class="text-muted d-block">Diesel lançado na data</small><strong id="precisionLitersRecorded">0 L</strong></div></div>
+                <div class="card-body py-3">
+                    <h5 class="section-title mb-2">Previsão de Combustível antes do Abastecimento</h5>
+                    <p class="text-muted small mb-2">Selecione a placa e informe o KM atual no painel para estimar quantos litros repor, usando o consumo desse veículo nos 3 dias anteriores.</p>
+                    <div class="row g-2 text-center">
+                        <div class="col-6 col-md-3"><div class="p-2 bg-light rounded"><small class="text-muted d-block">Último KM registrado</small><strong id="precisionLastKm">Aguardando placa</strong></div></div>
+                        <div class="col-6 col-md-3"><div class="p-2 bg-light rounded"><small class="text-muted d-block">KM desde o registro</small><strong id="precisionKmToday">Informe o KM</strong></div></div>
+                        <div class="col-6 col-md-3"><div class="p-2 bg-light rounded"><small class="text-muted d-block">Média do veículo (3 dias)</small><strong id="precisionAverage">Aguardando dados</strong></div></div>
+                        <div class="col-6 col-md-3"><div class="p-2 bg-primary text-white rounded"><small class="d-block">Litros estimados para repor</small><strong id="precisionLitersEstimate">Aguardando dados</strong></div></div>
                     </div>
-                    <div id="precisionFuelNote" class="small text-muted mt-3">A estimativa é aproximada e depende dos lançamentos de KM e litros.</div>
+                    <div id="precisionFuelNote" class="small text-muted mt-2">A estimativa aparece antes de informar os litros abastecidos. Estima o consumo desde o último abastecimento; não mede a capacidade livre do tanque.</div>
                 </div>
             </div>
 
@@ -487,6 +487,7 @@
             btn.onclick = function() {
                 document.getElementById('v_plate').value = p;
                 checkOilStatus(p);
+                updateFuelPrecision();
                 bootstrap.Modal.getInstance(document.getElementById('extraListModal')).hide();
                 setTimeout(() => document.getElementById('v_km').focus(), 300);
             };
@@ -653,38 +654,84 @@
 
     function updateFuelPrecision() {
         const format = value => Number(value).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-        const todayEntries = (db.days[today] && db.days[today].entries) ? db.days[today].entries : [];
-        const validNumber = value => value !== null && value !== '' && Number.isFinite(Number(value)) ? Number(value) : 0;
-        const todayKM = todayEntries.reduce((sum, entry) => sum + Math.max(0, validNumber(entry.diffKM)), 0);
-        const todayLiters = todayEntries.reduce((sum, entry) => sum + Math.max(0, validNumber(entry.liters)), 0);
-        let historyKM = 0, historyLiters = 0, daysUsed = 0;
+        const getNumber = value => value !== null && value !== '' && Number.isFinite(Number(value)) ? Number(value) : 0;
+        const plate = (document.getElementById('v_plate').value || '').trim().toUpperCase();
+        const inputKM = getNumber(document.getElementById('v_km').value);
+        const lastKmElement = document.getElementById('precisionLastKm');
+        const kmElement = document.getElementById('precisionKmToday');
+        const averageElement = document.getElementById('precisionAverage');
+        const estimateElement = document.getElementById('precisionLitersEstimate');
+        const noteElement = document.getElementById('precisionFuelNote');
+
+        if (!plate) {
+            lastKmElement.textContent = 'Aguardando placa';
+            kmElement.textContent = 'Informe placa e KM';
+            averageElement.textContent = 'Aguardando dados';
+            estimateElement.textContent = 'Aguardando dados';
+            noteElement.textContent = 'Selecione uma placa e informe o KM atual. A previsão usa o histórico individual do veículo.';
+            return;
+        }
+
+        // Busca o KM mais recente lançado até a data selecionada para este veículo.
+        let lastKM = null;
+        const dates = Object.keys(db.days).filter(date => date <= today).sort().reverse();
+        for (const date of dates) {
+            const entries = (db.days[date] && db.days[date].entries) || [];
+            for (let i = entries.length - 1; i >= 0; i--) {
+                if ((entries[i].plate || '').trim().toUpperCase() === plate && getNumber(entries[i].km) > 0) {
+                    lastKM = getNumber(entries[i].km);
+                    break;
+                }
+            }
+            if (lastKM !== null) break;
+        }
+
+        if (lastKM === null) {
+            lastKmElement.textContent = 'Sem KM anterior';
+            kmElement.textContent = inputKM > 0 ? 'Não calculável' : 'Informe o KM';
+            averageElement.textContent = 'Aguardando dados';
+            estimateElement.textContent = 'Aguardando histórico';
+            noteElement.textContent = 'Não há KM anterior registrado para esta placa; salve um primeiro lançamento para iniciar as previsões.';
+            return;
+        }
+
+        lastKmElement.textContent = `${format(lastKM)} km`;
+        const distance = inputKM > 0 ? inputKM - lastKM : 0;
+        kmElement.textContent = inputKM > 0 ? `${format(distance)} km` : 'Informe o KM';
+
+        let kmSum = 0, litersSum = 0, daysUsed = 0;
         const selectedDate = new Date(today + 'T12:00:00Z');
-        for (let i = 1; i <= 3; i++) {
-            const date = new Date(selectedDate.getTime() - i * 86400000).toISOString().slice(0, 10);
-            const entries = db.days[date] && db.days[date].entries || [];
+        for (let daysBack = 1; daysBack <= 3; daysBack++) {
+            const date = new Date(selectedDate.getTime() - daysBack * 86400000).toISOString().slice(0, 10);
+            const entries = (db.days[date] && db.days[date].entries) || [];
             let dayHasData = false;
             entries.forEach(entry => {
-                const km = validNumber(entry.diffKM), liters = validNumber(entry.liters);
+                if ((entry.plate || '').trim().toUpperCase() !== plate) return;
+                const km = getNumber(entry.diffKM), liters = getNumber(entry.liters);
                 if (km > 0 && liters > 0) {
-                    historyKM += km;
-                    historyLiters += liters;
+                    kmSum += km;
+                    litersSum += liters;
                     dayHasData = true;
                 }
             });
             if (dayHasData) daysUsed++;
         }
-        const average = historyLiters > 0 ? historyKM / historyLiters : 0;
-        const canEstimate = average > 0 && todayKM > 0;
-        const estimate = canEstimate ? todayKM / average : 0;
 
-        document.getElementById('precisionKmToday').textContent = `${format(todayKM)} km`;
-        document.getElementById('precisionAverage').textContent = average > 0 ? `${format(average)} km/L` : 'Sem dados suficientes';
-        document.getElementById('precisionLitersEstimate').textContent = canEstimate ? `${format(estimate)} L` : 'Aguardando dados';
-        document.getElementById('precisionLitersRecorded').textContent = `${format(todayLiters)} L`;
-        let note = daysUsed ? `${daysUsed} de 3 dias anteriores com dados válidos. ` : 'Sem dados válidos de KM e diesel nos 3 dias anteriores. ';
-        if (!todayKM) note += 'Sem KM válidos lançados na data selecionada. ';
-        note += 'Os KM são a diferença entre abastecimentos e podem incluir dias anteriores; os litros lançados são abastecimentos, não necessariamente o consumo da data. Resultado aproximado, não medição da bomba.';
-        document.getElementById('precisionFuelNote').textContent = note;
+        const average = litersSum > 0 ? kmSum / litersSum : 0;
+        const validDistance = distance > 0;
+        const estimate = average > 0 && validDistance ? distance / average : 0;
+        averageElement.textContent = average > 0 ? `${format(average)} km/L` : 'Sem dados nos 3 dias';
+        estimateElement.textContent = estimate > 0 ? `${format(estimate)} L` : (inputKM > 0 && distance <= 0 ? 'Confira o KM' : 'Aguardando dados');
+
+        if (inputKM > 0 && distance < 0) {
+            noteElement.textContent = 'O KM informado é menor que o último KM registrado. Confira o valor antes de abastecer.';
+        } else if (average > 0 && validDistance) {
+            noteElement.textContent = `Previsão individual usando ${daysUsed} dos 3 dias anteriores. Informe os litros reais após abastecer para registrar. É uma estimativa do consumo desde o último abastecimento. Só aproxima os litros para completar o tanque se ele estava cheio no último abastecimento; não mede o espaço livre.`;
+        } else if (!validDistance) {
+            noteElement.textContent = 'Informe um KM atual maior que o último KM registrado para calcular a distância e a previsão.';
+        } else {
+            noteElement.textContent = 'Sem lançamentos válidos de KM e diesel deste veículo nos 3 dias anteriores; não é possível estimar com segurança.';
+        }
     }
 
     let editingIndex = -1;
