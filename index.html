@@ -141,11 +141,11 @@
             <div class="card border-primary mb-4" id="fuelPrecisionCard">
                 <div class="card-body py-3">
                     <h5 class="section-title mb-2">Previsão de Combustível antes do Abastecimento</h5>
-                    <p class="text-muted small mb-2">Selecione a placa e informe o KM atual no painel para estimar quantos litros repor, usando o consumo desse veículo nos 3 dias anteriores.</p>
+                    <p class="text-muted small mb-2">Selecione a placa e informe o KM atual no painel para estimar quantos litros repor, usando os 3 últimos lançamentos desse veículo.</p>
                     <div class="row g-2 text-center">
                         <div class="col-6 col-md-3"><div class="p-2 bg-light rounded"><small class="text-muted d-block">Último KM registrado</small><strong id="precisionLastKm">Aguardando placa</strong></div></div>
                         <div class="col-6 col-md-3"><div class="p-2 bg-light rounded"><small class="text-muted d-block">KM desde o registro</small><strong id="precisionKmToday">Informe o KM</strong></div></div>
-                        <div class="col-6 col-md-3"><div class="p-2 bg-light rounded"><small class="text-muted d-block">Média do veículo (3 dias)</small><strong id="precisionAverage">Aguardando dados</strong></div></div>
+                        <div class="col-6 col-md-3"><div class="p-2 bg-light rounded"><small class="text-muted d-block">Média dos 3 últimos lançamentos</small><strong id="precisionAverage">Aguardando dados</strong></div></div>
                         <div class="col-6 col-md-3"><div class="p-2 bg-primary text-white rounded"><small class="d-block">Litros estimados para repor</small><strong id="precisionLitersEstimate">Aguardando dados</strong></div></div>
                     </div>
                     <div id="precisionFuelNote" class="small text-muted mt-2">A estimativa aparece antes de informar os litros abastecidos. Estima o consumo desde o último abastecimento; não mede a capacidade livre do tanque.</div>
@@ -668,7 +668,7 @@
             kmElement.textContent = 'Informe placa e KM';
             averageElement.textContent = 'Aguardando dados';
             estimateElement.textContent = 'Aguardando dados';
-            noteElement.textContent = 'Selecione uma placa e informe o KM atual. A previsão usa o histórico individual do veículo.';
+            noteElement.textContent = 'Selecione uma placa e informe o KM atual. A previsão usa os 3 últimos abastecimentos válidos da placa selecionada.';
             return;
         }
 
@@ -699,38 +699,37 @@
         const distance = inputKM > 0 ? inputKM - lastKM : 0;
         kmElement.textContent = inputKM > 0 ? `${format(distance)} km` : 'Informe o KM';
 
-        let kmSum = 0, litersSum = 0, daysUsed = 0;
-        const selectedDate = new Date(today + 'T12:00:00Z');
-        for (let daysBack = 1; daysBack <= 3; daysBack++) {
-            const date = new Date(selectedDate.getTime() - daysBack * 86400000).toISOString().slice(0, 10);
+        // Coleta os três lançamentos válidos mais recentes da placa, sem limitar por data.
+        const recentEntries = [];
+        const historyDates = Object.keys(db.days).filter(date => date <= today).sort().reverse();
+        for (const date of historyDates) {
             const entries = (db.days[date] && db.days[date].entries) || [];
-            let dayHasData = false;
-            entries.forEach(entry => {
-                if ((entry.plate || '').trim().toUpperCase() !== plate) return;
+            for (let i = entries.length - 1; i >= 0; i--) {
+                const entry = entries[i];
+                if ((entry.plate || '').trim().toUpperCase() !== plate) continue;
                 const km = getNumber(entry.diffKM), liters = getNumber(entry.liters);
-                if (km > 0 && liters > 0) {
-                    kmSum += km;
-                    litersSum += liters;
-                    dayHasData = true;
-                }
-            });
-            if (dayHasData) daysUsed++;
+                if (km > 0 && liters > 0) recentEntries.push({ km, liters });
+                if (recentEntries.length === 3) break;
+            }
+            if (recentEntries.length === 3) break;
         }
+        const kmSum = recentEntries.reduce((sum, entry) => sum + entry.km, 0);
+        const litersSum = recentEntries.reduce((sum, entry) => sum + entry.liters, 0);
 
         const average = litersSum > 0 ? kmSum / litersSum : 0;
         const validDistance = distance > 0;
         const estimate = average > 0 && validDistance ? distance / average : 0;
-        averageElement.textContent = average > 0 ? `${format(average)} km/L` : 'Sem dados nos 3 dias';
+        averageElement.textContent = average > 0 ? `${format(average)} km/L` : 'Sem lançamentos válidos';
         estimateElement.textContent = estimate > 0 ? `${format(estimate)} L` : (inputKM > 0 && distance <= 0 ? 'Confira o KM' : 'Aguardando dados');
 
         if (inputKM > 0 && distance < 0) {
             noteElement.textContent = 'O KM informado é menor que o último KM registrado. Confira o valor antes de abastecer.';
         } else if (average > 0 && validDistance) {
-            noteElement.textContent = `Previsão individual usando ${daysUsed} dos 3 dias anteriores. Informe os litros reais após abastecer para registrar. É uma estimativa do consumo desde o último abastecimento. Só aproxima os litros para completar o tanque se ele estava cheio no último abastecimento; não mede o espaço livre.`;
+            noteElement.textContent = `Previsão individual calculada pelos ${recentEntries.length} últimos lançamentos válidos. Informe os litros reais após abastecer para registrar. É uma estimativa do consumo desde o último abastecimento. Só aproxima os litros para completar o tanque se ele estava cheio no último abastecimento; não mede o espaço livre.`;
         } else if (!validDistance) {
             noteElement.textContent = 'Informe um KM atual maior que o último KM registrado para calcular a distância e a previsão.';
         } else {
-            noteElement.textContent = 'Sem lançamentos válidos de KM e diesel deste veículo nos 3 dias anteriores; não é possível estimar com segurança.';
+            noteElement.textContent = 'Não há lançamentos válidos anteriores suficientes deste veículo; não é possível estimar com segurança.';
         }
     }
 
