@@ -204,7 +204,10 @@
                 </div>
             </div>
 
-            <div class="d-flex justify-content-end mb-3">
+            <div class="d-flex flex-wrap justify-content-end gap-2 mb-3">
+                <button class="btn btn-danger fw-bold" onclick="showOilOverdueAlert()">
+                    <i class="bi bi-exclamation-triangle-fill"></i> AVISO DE TROCA DE ÓLEO
+                </button>
                 <button class="btn btn-dark fw-bold" onclick="generateOilReport()">
                     <i class="bi bi-file-earmark-text"></i> GERAR RELATÓRIO DE TROCA DE ÓLEO
                 </button>
@@ -924,6 +927,32 @@
         } else {
             warnFooter.style.display = 'none';
         }
+    }
+
+    function showOilOverdueAlert() {
+        const overdueVehicles = db.plates.slice().sort().map(plate => {
+            const lastKM = Number(db.oilChanges[plate]) || 0;
+            if (lastKM <= 0) return null;
+            const currentKM = Number(db.history[plate]) || 0;
+            const interval = Number(db.oilIntervals && db.oilIntervals[plate]) || 20000;
+            const nextChangeKM = lastKM + interval;
+            const kmOver = currentKM - nextChangeKM;
+            return kmOver >= 0 ? { plate, kmOver } : null;
+        }).filter(Boolean);
+
+        if (overdueVehicles.length === 0) {
+            alert('✅ Nenhuma troca de óleo está vencida neste momento.');
+            return;
+        }
+
+        const lines = overdueVehicles.map(vehicle =>
+            `• ${vehicle.plate}: ${vehicle.kmOver.toLocaleString('pt-BR')} km além do limite de troca.`
+        );
+        alert(`⚠️ AVISO: TROCA DE ÓLEO VENCIDA
+
+${lines.join('\n')}
+
+Confira e programe a manutenção dos veículos.`);
     }
 
     function generateOilReport() {
